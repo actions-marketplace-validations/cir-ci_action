@@ -1,3 +1,5 @@
+<p align="center"><img src=".github/assets/circi-logo.svg" width="96" height="96" alt="CirCI"></p>
+
 # CirCI GitHub Action
 
 Uploads screenshots (and built static sites) from a GitHub Actions workflow to your [CirCI](https://circi.dev) server, a self-hosted visual regression testing service. It runs [`@circi/cli`](https://www.npmjs.com/package/@circi/cli) for you, sets outputs for the build, and writes a job summary with a link to it.
