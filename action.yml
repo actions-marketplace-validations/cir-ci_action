@@ -1,4 +1,4 @@
-name: CirCI
+name: CirCI - visual testing
 description: Upload screenshots and static sites from a workflow to your CirCI visual regression testing server.
 author: CirCI
 branding:
