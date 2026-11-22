@@ -10,7 +10,7 @@ inputs:
     description: Directory of .png screenshots to upload as a build (searched recursively). Required unless `site` is set.
     required: false
   token:
-    description: The CirCI project token. Pass `${{ secrets.CIRCI_TOKEN }}`. Falls back to the CIRCI_TOKEN environment variable.
+    description: The CirCI project token, from a repository secret named CIRCI_TOKEN. Falls back to the CIRCI_TOKEN environment variable.
     required: false
   api-url:
     description: The address of your CirCI server, for example https://ci.acme.io. Falls back to the CIRCI_API_URL environment variable.
