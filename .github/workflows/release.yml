@@ -1,0 +1,64 @@
+# Releasing: publish a GitHub release with a vX.Y.Z tag on a commit of main (Releases > Draft a new release, and tick
+# "Publish this Action to the GitHub Marketplace" to list it there). This workflow then runs the tests on that commit
+# and, when they pass, moves the major tag (v1 for v1.4.2) to it, which is what `uses: cir-ci/action@v1` runs.
+# A prerelease (v1.5.0-rc.1, or "Set as a pre-release") is tested but doesn't move the major tag.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency: release
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      major: ${{ steps.tag.outputs.major }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          if ! [[ "$TAG" =~ ^v([0-9]+)\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::The release's tag is $TAG; it must be vX.Y.Z (or vX.Y.Z-something for a prerelease)."
+            exit 1
+          fi
+          major="v${BASH_REMATCH[1]}"
+          suffix="${BASH_REMATCH[2]}"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$TAG is not on main; release from a commit of main."
+            exit 1
+          fi
+          if [ "$PRERELEASE" = true ] || [ -n "$suffix" ]; then
+            echo "::notice::$TAG is a prerelease, so $major stays where it is."
+          else
+            echo "major=$major" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: check
+    uses: ./.github/workflows/test.yml
+
+  major-tag:
+    needs: [check, test]
+    if: needs.check.outputs.major
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the major tag
+    env:
+      MAJOR: ${{ needs.check.outputs.major }}
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: |
+          git tag --force "$MAJOR" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$MAJOR"
+          echo "::notice::$MAJOR now points at $TAG ($GITHUB_SHA)."
