@@ -1,0 +1,121 @@
+name: CirCI visual tests
+description: Upload screenshots and static sites from a workflow to your CirCI visual regression testing server.
+author: CirCI
+branding:
+  icon: image
+  color: blue
+
+inputs:
+  path:
+    description: Directory of .png screenshots to upload as a build (searched recursively). Required unless `site` is set.
+    required: false
+  token:
+    description: The CirCI project token. Pass `${{ secrets.CIRCI_TOKEN }}`. Falls back to the CIRCI_TOKEN environment variable.
+    required: false
+  api-url:
+    description: The address of your CirCI server, for example https://ci.acme.io. Falls back to the CIRCI_API_URL environment variable.
+    required: false
+  name:
+    description: Build name, for several kinds of builds per commit.
+    required: false
+    default: default
+  wait:
+    description: "`true` waits for the build to be processed and fails the job while changes need review and this job is the gate."
+    required: false
+    default: "false"
+  gate:
+    description: "Who blocks the merge: `status` (the git host's check) or `exit-code` (this job). Empty lets the server decide."
+    required: false
+  timeout:
+    description: How many seconds `wait` waits.
+    required: false
+    default: "600"
+  shard:
+    description: This job's number in a sharded build (1-based), or the whole `n/total` (for example 2/4). Use with `shards`.
+    required: false
+  shards:
+    description: How many shard jobs the build has. Use with `shard`.
+    required: false
+  site:
+    description: A built static site to host next to the screenshots (for example storybook-static). Uploaded after the screenshots.
+    required: false
+  site-name:
+    description: Which of the project's sites this is.
+    required: false
+    default: site
+  site-kind:
+    description: "storybook, vitest-report, playwright-report, coverage, docs, generic or auto."
+    required: false
+    default: auto
+  cli-version:
+    description: The @circi/cli version to run. Pinned, so a CLI release never changes your builds; a release of this action moves it.
+    required: false
+    default: 0.2.0
+  working-directory:
+    description: The directory to run in. `path` and `site` are relative to it.
+    required: false
+    default: .
+
+outputs:
+  build-url:
+    description: The address of the build in the dashboard.
+    value: ${{ steps.upload.outputs.build-url }}
+  build-id:
+    description: The build's ID.
+    value: ${{ steps.upload.outputs.build-id }}
+  build-number:
+    description: The build's number in its project.
+    value: ${{ steps.upload.outputs.build-number }}
+  status:
+    description: "One of: uploaded (not waited for), passed, needs-review, error, skipped (no token, as on a pull request from a fork)."
+    value: ${{ steps.upload.outputs.status }}
+  changed:
+    description: Screenshots that changed. Only with `wait`.
+    value: ${{ steps.upload.outputs.changed }}
+  added:
+    description: New screenshots. Only with `wait`.
+    value: ${{ steps.upload.outputs.added }}
+  removed:
+    description: Screenshots that are gone. Only with `wait`.
+    value: ${{ steps.upload.outputs.removed }}
+  site-url:
+    description: The commit address of the uploaded site.
+    value: ${{ steps.upload.outputs.site-url }}
+
+runs:
+  using: composite
+  steps:
+    # The CLI needs Node 22 or newer. GitHub's hosted runners have it; a self-hosted runner may not.
+    - name: Check for Node 22 or newer
+      id: node
+      shell: bash
+      run: |
+        if command -v node >/dev/null 2>&1 && [ "$(node -p 'Number(process.versions.node.split(".")[0])')" -ge 22 ]; then
+          echo "needed=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "needed=true" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Set up Node
+      if: steps.node.outputs.needed == 'true'
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+    - name: Upload to CirCI
+      id: upload
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/src/run.mjs"
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_NAME: ${{ inputs.name }}
+        INPUT_WAIT: ${{ inputs.wait }}
+        INPUT_GATE: ${{ inputs.gate }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+        INPUT_SHARD: ${{ inputs.shard }}
+        INPUT_SHARDS: ${{ inputs.shards }}
+        INPUT_SITE: ${{ inputs.site }}
+        INPUT_SITE_NAME: ${{ inputs.site-name }}
+        INPUT_SITE_KIND: ${{ inputs.site-kind }}
+        INPUT_CLI_VERSION: ${{ inputs.cli-version }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}

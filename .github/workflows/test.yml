@@ -1,0 +1,160 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
+
+  # The script against a fake CirCI server and the real @circi/cli from npm.
+  script:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: node --test test/
+
+  # The action itself, as a workflow would use it.
+  action:
+    runs-on: ubuntu-latest
+    env:
+      FAKE_LOG: ${{ github.workspace }}/../fake-requests.jsonl
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Start a fake CirCI server
+        run: |
+          node test/fake-circi.mjs --port 4801 --log "$FAKE_LOG" &
+          node test/fake-circi.mjs --port 4802 --outcome fail &
+          for port in 4801 4802; do
+            for _ in $(seq 1 30); do
+              curl -fs "http://127.0.0.1:$port/v1/project" >/dev/null && break
+              sleep 0.5
+            done
+          done
+
+      - name: Upload and wait
+        id: pass
+        uses: ./
+        with:
+          path: test/fixtures/screenshots
+          token: test-token
+          api-url: http://127.0.0.1:4801
+          name: chromium
+          wait: true
+      - name: Check the outputs
+        env:
+          URL: ${{ steps.pass.outputs.build-url }}
+          ID: ${{ steps.pass.outputs.build-id }}
+          STATUS: ${{ steps.pass.outputs.status }}
+          ADDED: ${{ steps.pass.outputs.added }}
+        run: |
+          test "$URL" = "http://127.0.0.1:4801/builds/7"
+          test "$ID" = "b1"
+          test "$STATUS" = "passed"
+          test "$ADDED" = "1"
+          grep -q '"name":"chromium"' "$FAKE_LOG"
+          grep -q '"authorization":"Bearer test-token"' "$FAKE_LOG"
+
+      - name: Upload a shard
+        uses: ./
+        with:
+          path: test/fixtures/screenshots
+          token: test-token
+          api-url: http://127.0.0.1:4801
+          shard: 2
+          shards: 4
+      - name: Check the shard
+        run: grep -q '"parallel":{"nonce":"[0-9]*-[0-9]*","total":4}' "$FAKE_LOG"
+
+      - name: Upload changes that need review
+        id: review
+        continue-on-error: true
+        uses: ./
+        with:
+          path: test/fixtures/screenshots
+          token: test-token
+          api-url: http://127.0.0.1:4802
+          wait: true
+      - name: Check that the job failed with the status
+        env:
+          OUTCOME: ${{ steps.review.outcome }}
+          STATUS: ${{ steps.review.outputs.status }}
+          CHANGED: ${{ steps.review.outputs.changed }}
+        run: |
+          test "$OUTCOME" = "failure"
+          test "$STATUS" = "needs-review"
+          test "$CHANGED" = "2"
+
+      - name: Skip without a token, as on a pull request from a fork
+        id: skipped
+        uses: ./
+        with:
+          path: test/fixtures/screenshots
+          token: ""
+          api-url: http://127.0.0.1:4801
+      - name: Check the skip
+        env:
+          STATUS: ${{ steps.skipped.outputs.status }}
+        run: test "$STATUS" = "skipped"
+
+      - name: Upload a hosted site
+        id: site
+        uses: ./
+        with:
+          site: test/fixtures/site
+          site-name: storybook
+          token: test-token
+          api-url: http://127.0.0.1:4801
+      - name: Check the site
+        env:
+          SITE_URL: ${{ steps.site.outputs.site-url }}
+        run: |
+          test "$SITE_URL" = "https://abc-web.sites.test"
+          grep -q '"name":"storybook"' "$FAKE_LOG"
+
+  # A runner with an older Node gets Node 24 from the action.
+  old-node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+      - name: Start a fake CirCI server
+        run: |
+          node test/fake-circi.mjs --port 4801 &
+          for _ in $(seq 1 30); do
+            curl -fs http://127.0.0.1:4801/v1/project >/dev/null && break
+            sleep 0.5
+          done
+      - uses: ./
+        id: upload
+        with:
+          path: test/fixtures/screenshots
+          token: test-token
+          api-url: http://127.0.0.1:4801
+      - name: Check Node and the status
+        env:
+          STATUS: ${{ steps.upload.outputs.status }}
+        run: |
+          node --version | grep -q '^v24\.'
+          test "$STATUS" = "uploaded"
