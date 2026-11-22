@@ -27,7 +27,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: node --test test/
+      - run: node --test test/run.test.mjs
 
   # The action itself, as a workflow would use it.
   action:

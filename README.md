@@ -168,7 +168,7 @@ The step fails with the CLI's exit code: `1` when `wait` is on, changes need rev
 
 ## Development
 
-`node --test test/` runs the script against a fake CirCI server (`test/fake-circi.mjs`) and the real `@circi/cli`; CI also runs the action itself on GitHub. Only the CirCI server is faked.
+`node --test test/run.test.mjs` runs the script against a fake CirCI server (`test/fake-circi.mjs`) and the real `@circi/cli`; CI also runs the action itself on GitHub. Only the CirCI server is faked.
 
 ## License
 
